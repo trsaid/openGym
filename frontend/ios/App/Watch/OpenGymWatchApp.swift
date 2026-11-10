@@ -12,7 +12,9 @@ import WidgetKit
  *   3-2-1   with Apple Health on, a countdown before it starts (the heart-rate sensor warms up)
  *   set     weight × reps in big rounded numerals, the round Done, the set dots; the crown turns
  *           the reps (or the weight, after a tap on it), marked by the crown symbol under it
- *           and, when the profile rates effort, RPE or RIR in a small disc beside Done
+ *           and, when the profile rates effort, RPE or RIR in a small disc beside Done.
+ *           The reps count themselves from the wrist's motion (SessionStore, "reps counted
+ *           from the wrist"): in the accent colour while the number is the counter's own
  *   rest    a full-screen ring around a huge countdown, +15 s and Skip as small round buttons
  *   hold    a timed set: the seconds on the crown, Start, then a ring counting down, Stop
  *   finish  after the last exercise, one round button
@@ -95,6 +97,8 @@ struct RootView: View {
                 CountdownView(from: from)
             } else if store.workout == nil {
                 IdleView()
+            } else if let from = store.setEndFrom {
+                SetEndView(from: from)
             } else if let from = store.holdCountFrom {
                 CountdownView(from: from, label: Text("Start hold"), start: { store.startHold(auto: true) }, cancel: { store.stopHoldCount() })
             } else if let end = store.holdEndsAt {
@@ -254,6 +258,45 @@ struct CountdownView: View {
             .padding(.horizontal, 6)
             HStack {
                 EdgeButton(systemImage: "xmark", label: Text("Cancel")) { if let cancel = cancel { cancel() } else { store.cancelCountdown() } }
+                Spacer()
+            }
+        }
+        .ignoresSafeArea(edges: .bottom)
+    }
+}
+
+/// A set about to be ticked by itself (the phone's "End the set by itself"): the reps counted,
+/// in a ring that empties in three seconds. A tap ticks it now; the small button keeps the set
+/// open (a rep that comes meanwhile does too), for Done as always.
+struct SetEndView: View {
+    @EnvironmentObject var store: SessionStore
+    let from: Date
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Button { store.endSetNow() } label: {
+                ZStack {
+                    CountdownRing(start: from, end: from.addingTimeInterval(Double(Countdown.seconds)))
+                    VStack(spacing: -2) {
+                        Text(verbatim: formatNumber(store.reps))
+                            .font(.system(size: 56, weight: .bold, design: .rounded).monospacedDigit())
+                            .foregroundStyle(Theme.accent)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                        Text("Reps").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                    }
+                }
+                .aspectRatio(1, contentMode: .fit)
+                .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text("Done"))
+            .accessibilityValue(Text(verbatim: formatNumber(store.reps)))
+            .accessibilityAddTraits(.isButton)
+            .padding(.horizontal, 6)
+            HStack {
+                EdgeButton(systemImage: "xmark", label: Text("Cancel")) { store.stopSetEnd() }
                 Spacer()
             }
         }
@@ -444,9 +487,11 @@ struct ExercisePage: View {
         let weight = current ? store.weight : (side?.w ?? row.w ?? 0)
         let reps = current ? store.reps : (side?.r ?? row.r ?? 0)
         let tint = row.warmup ? Theme.warmup : Color.white
+        // Counted from the wrist, not the set's target: the number says so by its colour.
+        let repsTint = current && store.repsCounted ? Theme.accent : tint
         if entry.isBodyweight {
             VStack(spacing: 3) {
-                ValueTile(value: formatNumber(reps), unit: nil, label: Text("Reps"), tint: tint, large: true) { if current { editing = .reps } }
+                ValueTile(value: formatNumber(reps), unit: nil, label: Text("Reps"), tint: repsTint, large: true) { if current { editing = .reps } }
                 Button { if current { editing = .weight } } label: {
                     Group {
                         if weight > 0 { Text(verbatim: "+\(formatNumber(weight)) \(unit)") } else { Text("Bodyweight") }
@@ -464,7 +509,7 @@ struct ExercisePage: View {
         } else {
             HStack(spacing: 6) {
                 ValueTile(value: formatNumber(weight), unit: unit, label: Text("Weight"), tint: tint) { if current { editing = .weight } }
-                ValueTile(value: formatNumber(reps), unit: nil, label: Text("Reps"), tint: tint) { if current { editing = .reps } }
+                ValueTile(value: formatNumber(reps), unit: nil, label: Text("Reps"), tint: repsTint) { if current { editing = .reps } }
             }
         }
     }
@@ -768,9 +813,13 @@ struct ValueEditor: View {
             }
             opened = value
             focused = true
+            store.editingValue = true
         }
         // Effort: swiped away untouched, the set stays unrated (Done rates it as shown).
-        .onDisappear { if field != .effort || value != opened || store.effort != nil { save() } }
+        .onDisappear {
+            store.editingValue = false
+            if field != .effort || value != opened || store.effort != nil { save() }
+        }
     }
 
     private func nudge(_ d: Double) {
@@ -783,7 +832,8 @@ struct ValueEditor: View {
     private func save() {
         switch field {
         case .weight: store.weight = max(0, value)
-        case .reps: store.reps = max(0, value.rounded())
+        // Left as they were, the reps stay the counter's to count on; changed, they are the lifter's.
+        case .reps: if value != opened { store.editReps(max(0, value.rounded())) }
         case .seconds: store.seconds = max(5, value)
         case .effort: store.rate(Effort.value(kind, at: Int(value.rounded())))
         }
@@ -1241,6 +1291,7 @@ struct DebugView: View {
                 Text(verbatim: "started here: \(store.state.startedHere ?? "-")").font(.caption2)
                 Text(verbatim: "clips: \(store.clips.count)").font(.caption2)
                 Text(verbatim: "health: \(store.health.enabled ? "on" : "off"), \(store.health.running ? "running" : "idle")").font(.caption2)
+                Text(verbatim: "reps: \(store.repSensor.listening ? "listening" : "off"), sets \(TraceStore.summary)").font(.caption2)
                 Divider()
                 ForEach(Array(store.clipLog.reversed().enumerated()), id: \.offset) { pair in
                     Text(verbatim: pair.element).font(.system(size: 10)).foregroundStyle(.secondary)

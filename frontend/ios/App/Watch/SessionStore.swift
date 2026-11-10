@@ -107,6 +107,23 @@ final class SessionStore: NSObject, ObservableObject, WCSessionDelegate, UNUserN
     /// A set picked by hand in an exercise (entry index → set index); otherwise the first not done.
     @Published private var picked: [Int: Int] = [:]
 
+    /* ---------- reps counted from the wrist (WatchCore RepCounter, MotionSampler.swift) ---------- */
+
+    /// The motion sensor and the counter behind it; it listens only while `syncCounting` says so.
+    let repSensor = RepSensor()
+    /// The reps on the tile are the counter's own (the tile is in the accent colour then).
+    @Published private(set) var repsCounted = false
+    /// A set about to be ticked by itself (the phone's "End the set by itself"): when its 3-2-1 began.
+    @Published private(set) var setEndFrom: Date?
+    /// A value is being changed on its own screen (ValueEditor): no set ends by itself under it.
+    var editingValue = false
+    /// The set the counter listens for (setKey), what it counts for it so far, and whether the
+    /// lifter changed the reps by hand: then the counter keeps its hands off the tile.
+    private var countingFor: String?
+    private var counted: Int?
+    private var repsEdited = false
+    private var setEndTimer: Timer?
+
     /// When the set now up began: the end of the rest before it, or the start of the session.
     private var setStartedAt = Date()
     /// The last Done, against a double tap.
@@ -168,6 +185,8 @@ final class SessionStore: NSObject, ObservableObject, WCSessionDelegate, UNUserN
             }
         }
         health.onStatus = { [weak self] in self?.sendStatus() }
+        repSensor.onCount = { [weak self] n, token in self?.repCounted(n, token: token) }
+        repSensor.onQuiet = { [weak self] token in self?.setLooksOver(token: token) }
         let center = UNUserNotificationCenter.current()
         center.delegate = self
         if !isDemo { center.requestAuthorization(options: [.alert, .sound]) { _, _ in } }
@@ -204,6 +223,7 @@ final class SessionStore: NSObject, ObservableObject, WCSessionDelegate, UNUserN
                                now: Date().timeIntervalSince1970 * 1000, busy: busy) {
                 self.log("idle \(Int(SensorPlan.idleLimitMs / 60000)) min: workout session paused")
                 self.health.pause()
+                self.syncCounting()
             } else if busy {
                 // A rest or hold runs on: look again once it is surely over.
                 self.idleCheck = nil
@@ -395,6 +415,9 @@ final class SessionStore: NSObject, ObservableObject, WCSessionDelegate, UNUserN
 
     /// The weight and reps the crown starts from: the set's own target.
     func loadTargets() {
+        // Last, whatever comes up: the counter listens for the set that is up now, and its count
+        // goes back over the target this puts on the tile.
+        defer { syncCounting() }
         // A rating stays with its set through snapshots; another set starts unrated.
         if effortFor != setKey { effort = nil; effortFor = nil }
         guard let e = entry else { return }
@@ -413,17 +436,24 @@ final class SessionStore: NSObject, ObservableObject, WCSessionDelegate, UNUserN
 
     /// The set up next, done: the numbers on the screen (a hold's seconds as it lasted, one side of
     /// a per-side set, nothing for cardio), then where SessionCore.next says, with a rest when due.
-    func completeSet(sec heldFor: Double? = nil) {
+    /// `auto`: the set ended by itself (endSetNow): it ended at its last rep, not now.
+    func completeSet(sec heldFor: Double? = nil, auto: Bool = false) {
         guard let w = workout, let e = entry, let si = setIndex else { return }
+        let byHand = heldFor == nil && !auto
         // A double tap on Done (a sweaty finger) is one set, not this one and the next.
-        if heldFor == nil, let last = lastTick, Date().timeIntervalSince(last) < 0.7 { return }
+        if byHand, let last = lastTick, Date().timeIntervalSince(last) < 0.7 { return }
         // In a superset the page flips to the partner: a slower second tap would log its set.
-        if heldFor == nil, !touchAllowed { return }
+        if byHand, !touchAllowed { return }
         lastTick = Date()
         ackRestOver()
+        stopSetEnd()
         let ei = entryIndex
-        let now = Date()
         let setFrom = setStartedAt
+        // What the counter has of this set: its readings are kept with what is logged for it.
+        let cut = countingFor != nil && countingFor == setKey ? repSensor.cut() : nil
+        let wasEdited = repsEdited
+        counted = nil
+        let now = auto ? max(setFrom, Date().addingTimeInterval(-(cut?.sinceLastRep ?? 0))) : Date()
         closeRest(at: now)
         let hr = health.stats(from: setFrom, to: now)
         let side = e.sets[si].sideUp
@@ -445,6 +475,10 @@ final class SessionStore: NSObject, ObservableObject, WCSessionDelegate, UNUserN
         setStartedAt = now
         picked[ei] = nil
         noteActivity()
+        if let cut = cut, let r = tr {
+            keepTrace(cut, entry: e, side: side, reps: r, w: tw, unit: e.weightUnit(w.unit), at: now,
+                      edited: wasEdited, auto: auto, by: nil)
+        }
         let (to, rest) = SessionCore.next(after: state, entry: ei, set: si)
         if side != nil && !rest {
             Haptics.side()          // the other side now
@@ -473,6 +507,21 @@ final class SessionStore: NSObject, ObservableObject, WCSessionDelegate, UNUserN
         // A tick from before this set started (one the phone made while the watch was away, already
         // past) or from the future (a clock off between the two): no window to measure.
         guard at > setStartedAt, at <= Date().addingTimeInterval(60) else { return }
+        // The set the counter was listening for: its readings are kept with the phone's reps.
+        if let key = countingFor, let w = workout, w.entries.indices.contains(t.entryIdx) {
+            let e = w.entries[t.entryIdx]
+            let side = ["L", "R"].first { key == SessionCore.key(t.exId, t.setIdx, $0) }
+            if e.id == t.exId, e.sets.indices.contains(t.setIdx), side != nil || key == SessionCore.key(t.exId, t.setIdx) {
+                let row = e.sets[t.setIdx]
+                let one = side.flatMap { row.sides?[$0] }
+                let cut = repSensor.cut()
+                counted = nil
+                if let r = one?.r ?? row.r {
+                    keepTrace(cut, entry: e, side: side, reps: r, w: one?.w ?? row.w, unit: e.weightUnit(w.unit), at: at,
+                              edited: false, auto: false, by: "phone")
+                }
+            }
+        }
         let setFrom = setStartedAt
         closeRest(at: at)
         if let hr = health.stats(from: setFrom, to: at) {
@@ -499,6 +548,95 @@ final class SessionStore: NSObject, ObservableObject, WCSessionDelegate, UNUserN
         }
         loadTargets()
         Haptics.skip()
+    }
+
+    /* ---------- reps counted from the wrist ---------- */
+
+    /// The counter follows the session: it listens for the set that is up (RepPlan), starts
+    /// afresh when another one comes up, and its count stays on the tile through a snapshot.
+    private func syncCounting() {
+        // Not in a workout left open for hours (SensorPlan paused its session): nobody lifts.
+        let listen = !isDemo && workout != nil && !health.paused && RepPlan.listens(state.settings, entry: entry, set: setIndex)
+        let key = listen ? setKey : nil
+        if key != countingFor {
+            countingFor = key
+            counted = nil
+            repsEdited = false
+            repsCounted = false
+            stopSetEnd()
+            if key != nil { repSensor.reset() }
+        }
+        if listen { repSensor.start(endsSets: state.settings.endsSets) } else { repSensor.stop() }
+        if listen, !repsEdited, let n = counted {
+            reps = Double(n)
+            repsCounted = true
+        }
+    }
+
+    /// The counter's count changed (RepSensor, on the main queue): onto the tile, with a tap on
+    /// the wrist. Not onto reps the lifter set by hand, and no taps while a rest still runs
+    /// (walking about between two sets has a rhythm too).
+    private func repCounted(_ n: Int, token: Int) {
+        guard token == repSensor.token, countingFor != nil, countingFor == setKey else { return }
+        let before = counted ?? 0
+        counted = n
+        stopSetEnd()                    // a rep during the 3-2-1: the set goes on
+        guard !repsEdited else { return }
+        reps = Double(n)
+        repsCounted = true
+        if n > before, state.settings.tapsReps, restEndsAt == nil { Haptics.rep() }
+    }
+
+    /// The set looks over (SetEnd: a rhythm, then quiet): with "End the set by itself" on, a
+    /// 3-2-1 with the count in it, and the set is ticked unless Cancel is tapped or a rep comes.
+    private func setLooksOver(token: Int) {
+        guard token == repSensor.token, countingFor != nil, countingFor == setKey, state.settings.endsSets,
+              repsCounted, !editingValue, !askDone, setEndFrom == nil else { return }
+        let from = Date()
+        setEndFrom = from
+        Haptics.count()
+        setEndTimer?.invalidate()
+        setEndTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self = self, self.setEndFrom == from else { return }
+                if Countdown.number(at: Date().timeIntervalSince(from) + 0.05) == 0 { self.endSetNow() } else { Haptics.count() }
+            }
+        }
+    }
+
+    /// The 3-2-1 ran out, or a tap on it: the set is ticked, its rest counted from the last rep.
+    func endSetNow() {
+        guard setEndFrom != nil else { return }
+        stopSetEnd()
+        completeSet(auto: true)
+    }
+
+    /// Cancel on the 3-2-1 (or anything that makes it moot): the set stays open, for Done.
+    func stopSetEnd() {
+        setEndTimer?.invalidate()
+        setEndTimer = nil
+        if setEndFrom != nil { setEndFrom = nil }
+    }
+
+    /// The reps set by hand (the reps editor): they stay, whatever the counter says afterwards.
+    func editReps(_ v: Double) {
+        guard v != reps else { return }
+        reps = v
+        repsEdited = true
+        repsCounted = false
+    }
+
+    /// A ticked set's readings, kept with what was logged for it (TraceStore). A set of a few
+    /// seconds, or one logged with no reps, teaches nothing.
+    private func keepTrace(_ cut: RepCut, entry e: Entry, side: String?, reps r: Double, w: Double?, unit: String, at: Date,
+                           edited: Bool, auto: Bool, by: String?) {
+        guard !isDemo, r >= 1, Double(cut.samples.count) >= 3 * RepSensor.rate else { return }
+        let trace = SetTrace(exId: e.id, name: e.name, side: side, reps: Int(r.rounded()), counted: cut.counted, edited: edited,
+                             auto: auto ? true : nil, by: by, w: w, unit: unit, at: (at.timeIntervalSince1970 * 1000).rounded(),
+                             wrist: TraceStore.wrist, crown: TraceStore.crown, rate: RepSensor.rate,
+                             n: cut.samples.count, data: TraceCodec.pack(cut.samples))
+        TraceStore.keep(trace)
+        log("set recorded: \(e.name), \(trace.reps) reps, counted \(cut.counted.map(String.init) ?? "-"), \(cut.samples.count / Int(RepSensor.rate)) s")
     }
 
     /* ---------- holds (timed sets) ---------- */
@@ -827,6 +965,7 @@ final class SessionStore: NSObject, ObservableObject, WCSessionDelegate, UNUserN
         dropClips()
         send(event: ev)
         state = next
+        syncCounting()
         Haptics.finished()
     }
 
@@ -842,6 +981,7 @@ final class SessionStore: NSObject, ObservableObject, WCSessionDelegate, UNUserN
         dropClips()
         send(event: ev)
         state = next
+        syncCounting()
         summary = nil
         Haptics.discarded()
     }
@@ -988,6 +1128,13 @@ final class SessionStore: NSObject, ObservableObject, WCSessionDelegate, UNUserN
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.updateLink() }
     }
 
+    /// A recorded set reached the phone (TraceStore): it is not sent again. One that failed
+    /// goes out with the next set, or when the link next comes up.
+    func session(_ session: WCSession, didFinish fileTransfer: WCSessionFileTransfer, error: Error?) {
+        guard let name = fileTransfer.file.metadata?["trace"] as? String else { return }
+        if error == nil { TraceStore.delivered(name) } else { log("recorded set not sent: \(name)") }
+    }
+
     /* ---------- the animations ---------- */
 
     private func log(_ line: String) {
@@ -1035,6 +1182,7 @@ final class SessionStore: NSObject, ObservableObject, WCSessionDelegate, UNUserN
         // The phone's latest snapshot: also what a watch app opened mid-workout picks the session up from.
         if let json = session.receivedApplicationContext["snapshot"] as? String { apply(json: json) }
         DispatchQueue.main.async { self.flushOutbox() }
+        TraceStore.sendWaiting()
         sendStatus()
         updateLink()
     }
@@ -1135,6 +1283,7 @@ final class SessionStore: NSObject, ObservableObject, WCSessionDelegate, UNUserN
  *   finished   stop, then two successes: the workout is saved
  *   skip       a soft one going down
  *   count      a click each second of the 3-2-1 before a workout
+ *   rep        a click for each rep the counter counts (the phone's "Tap the wrist at each rep")
  *   ask        two taps: "All done?", nothing logged for 20 minutes
  *   discarded  stop alone: the workout is gone, nothing saved
  */
@@ -1152,6 +1301,7 @@ enum Haptics {
     static func finished() { play([(0, .stop), (0.5, .success), (0.9, .success)]) }
     static func skip() { play([(0, .directionDown)]) }
     static func count() { play([(0, .click)]) }
+    static func rep() { play([(0, .click)]) }
     static func ask() { play([(0, .notification), (0.6, .notification)]) }
     static func discarded() { play([(0, .stop)]) }
 }

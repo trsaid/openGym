@@ -29,11 +29,15 @@ import Foundation
  *   a rhythm first
  *       Nothing is counted until `confirmReps` swings arrive at a steady tempo; then the count
  *       jumps to that many and goes on live. Once the tempo is known, a swing that comes much
- *       too soon after the last one is a wobble, not a rep.
+ *       too soon after the last one is a wobble, not a rep, and one that comes much too late is
+ *       held back: the bar going back on the rack, the wrist coming up to look at the watch.
+ *       It counts after all when the next one follows at the set's tempo (a breath before the
+ *       last two reps), and a few of them at a slower tempo of their own are a new count: what
+ *       was counted before was the walk to the bench.
  *   the workout says where a set starts and ends
  *       RepCounter ends a set after a few quiet seconds. Here the set is the one the workout
  *       shows, and it ends when it is ticked (SessionStore), so there is no set-end guess in the
- *       counter. A long pause only means the next steady rhythm starts a new count (`staleSec`):
+ *       counter. A long pause only means the next steady rhythm starts a new count (`stale`):
  *       what came before was the walk to the bar, not the set.
  */
 
@@ -83,7 +87,13 @@ struct RepSettings: Equatable {
     var ratioHi: Double = 2.0
     /// With the tempo known, a swing sooner than this share of it after the last is a wobble.
     var refractory: Double = 0.5
-    /// A pause this long between two reps: the next steady rhythm starts a new count.
+    /// With the tempo known, a swing later than this share of it after the last is held back
+    /// until the next one says what it was.
+    var lateShare: Double = 2.0
+    /// A pause this long between two reps: the next steady rhythm starts a new count. So many
+    /// reps' time at the set's own tempo, never under `staleMin` seconds or over `staleSec`.
+    var staleShare: Double = 4.0
+    var staleMin: Double = 8.0
     var staleSec: Double = 20.0
     /// The wrist is moving above this share of the recent movement energy and still below that
     /// one, averaged over `stillWindow` seconds (for a set that ends by itself, SetEnd).
@@ -191,6 +201,14 @@ struct RepCounter: Equatable {
     private var pending: [Double] = []
     private var lastGap: Double?
     private var gaps: [Double] = []
+    /// Swings that came too late for the set's tempo, held back, and the gaps between them.
+    private var late: [Double] = []
+    private var lateGaps: [Double] = []
+
+    /// How long a pause makes the next rhythm a new count, at this tempo.
+    func stale(at tempo: Double?) -> Double {
+        min(settings.staleSec, max(settings.staleMin, settings.staleShare * (tempo ?? 0)))
+    }
 
     init(settings: RepSettings = .general, rate: Double = 50) {
         self.settings = settings
@@ -299,22 +317,49 @@ struct RepCounter: Equatable {
         let gap = lastOnset.map { t - $0 }
 
         if locked {
-            if let g = gap, g > c.staleSec {
+            let tempo = period
+            if let g = gap, g > stale(at: tempo) {
                 // A long pause: what comes now has to show a rhythm of its own. The count on
                 // the screen stays until it does.
                 locked = false
                 gaps = []
+                late = []
+                lateGaps = []
                 lastOnset = t
                 restartRhythm(at: t)
                 return 0
             }
             // Much too soon after the last rep: a wobble at the top, the bar settling.
-            if let g = gap, let tempo = period, g < c.refractory * tempo { return 0 }
+            if let g = gap, let tempo = tempo, g < c.refractory * tempo { return 0 }
             lastOnset = t
+            if let g = gap, let tempo = tempo, g > c.lateShare * tempo {
+                // Much too late for this set's tempo: held back until the next swing.
+                let steady = lateGaps.last.map { g / $0 >= c.ratioLo && g / $0 <= c.ratioHi } ?? true
+                if late.isEmpty || g > c.maxPeriod || !steady {
+                    late = [t]
+                    lateGaps = []
+                    return 0
+                }
+                late.append(t)
+                lateGaps.append(g)
+                guard lateGaps.count >= c.confirmReps else { return 0 }
+                // A slower rhythm of its own: this is the set, what was counted before was not.
+                count = late.count
+                burstFrom = late.first
+                gaps = Array(lateGaps.suffix(5))
+                late = []
+                lateGaps = []
+                lastRepAt = t
+                return count
+            }
+            // At the set's tempo: a rep, and so was what was held back before it.
+            let added = late.count + 1
+            late = []
+            lateGaps = []
             if let g = gap { gaps.append(g); if gaps.count > 5 { gaps.removeFirst() } }
-            count += 1
+            count += added
             lastRepAt = t
-            return 1
+            return added
         }
 
         if let g = gap, g < c.minPeriod { return 0 }

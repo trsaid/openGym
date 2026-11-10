@@ -2,3 +2,4 @@
 
 "NSHealthShareUsageDescription" = "openGym antrenman sırasında ve her setin yanında nabzını gösterir.";
 "NSHealthUpdateUsageDescription" = "Açarsan openGym antrenmanlarını Apple Sağlık’a kaydeder.";
+"NSMotionUsageDescription" = "openGym tekrarlarını set sırasında bileğinin hareketinden sayar.";

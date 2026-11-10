@@ -49,7 +49,50 @@ final class RepTraceTests: XCTestCase {
         XCTAssertEqual(t.samples.count, 0)
     }
 
+    func testAnExportReadsAsABundleOrAsOneTrace() throws {
+        let a = trace(RepSignals.lift(5), reps: 5), b = trace(RepSignals.lift(8), reps: 8, exId: "curl", at: 2)
+        // The phone writes the bundle by putting the trace files end to end (WatchBridgePlugin).
+        let one = try JSONEncoder().encode(a), two = try JSONEncoder().encode(b)
+        let bundle = Data(#"{"v":1,"traces":["#.utf8) + one + Data(",".utf8) + two + Data("]}".utf8)
+        XCTAssertEqual(TraceBundle.traces(in: bundle), [a, b])
+        XCTAssertEqual(TraceBundle.traces(in: one), [a])
+        XCTAssertEqual(TraceBundle.traces(in: Data("not a trace".utf8)), [])
+        XCTAssertEqual(try JSONDecoder().decode(TraceBundle.self, from: JSONEncoder().encode(TraceBundle(traces: [a, b]))).traces, [a, b])
+    }
+
+    /* ---------- when the counter listens ---------- */
+
+    func testTheCounterListensForASetWithRepsOnly() {
+        func entry(_ mode: String) -> Entry { Entry(id: "x", name: "X", mode: mode, sets: []) }
+        let on = WatchSettings()
+        XCTAssertTrue(RepPlan.listens(on, entry: entry("reps"), set: 0))
+        XCTAssertFalse(RepPlan.listens(on, entry: entry("time"), set: 0), "a hold has a clock")
+        XCTAssertFalse(RepPlan.listens(on, entry: entry("cardio"), set: 0))
+        XCTAssertFalse(RepPlan.listens(on, entry: entry("reps"), set: nil), "every set done")
+        XCTAssertFalse(RepPlan.listens(on, entry: nil, set: nil), "the finish page")
+        XCTAssertFalse(RepPlan.listens(WatchSettings(autoReps: false), entry: entry("reps"), set: 0), "switched off on the phone")
+    }
+
     /* ---------- the tracker ---------- */
+
+    func testAnotherSetUpStartsAFreshCount() {
+        var tr = RepTracker()
+        for s in RepSignals.lift(8) { _ = tr.feed(s) }
+        XCTAssertEqual(tr.shown, 8)
+        tr.reset()
+        XCTAssertNil(tr.shown)
+        XCTAssertNil(tr.sinceLastRep)
+        XCTAssertEqual(tr.cut().count, 0)
+    }
+
+    func testTheRestAfterASetThatEndedByItselfStartsAtTheLastRep() {
+        var tr = RepTracker()
+        let set = RepSignals.lift(8)
+        for s in set + RepSignals.silence(5, from: set.last!.t + RepSignals.dt) { _ = tr.feed(s) }
+        // The last rep turned at its top, about a second and a half before the set's last reading.
+        XCTAssertEqual(tr.sinceLastRep ?? 0, 6.5, accuracy: 0.7)
+    }
+
 
     func testTheTileShowsNothingUntilTheRhythmThenTheCount() {
         var tr = RepTracker()

@@ -156,6 +156,16 @@ struct WatchSettings: Codable, Equatable {
     var effort: String?
     /// Timed holds start by themselves (the phone's Settings → Workout): rest over, 3-2-1, hold.
     var autoHolds: Bool?
+    /// Rep counting (RepCounter): the watch counts a set's reps from the wrist's motion and puts
+    /// them on the reps tile (on), taps the wrist at each rep (on), and ticks the set by itself a
+    /// few seconds after the last one (off: the set is ticked with Done).
+    var autoReps: Bool?
+    var repHaptics: Bool?
+    var autoEnd: Bool?
+
+    var countsReps: Bool { autoReps ?? true }
+    var tapsReps: Bool { repHaptics ?? true }
+    var endsSets: Bool { autoEnd ?? false }
 }
 
 /// What a workout screen shows. Each nil means its default.

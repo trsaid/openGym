@@ -2,3 +2,4 @@
 
 "NSHealthShareUsageDescription" = "O openGym mostra sua frequência cardíaca durante o treino e ao lado de cada série.";
 "NSHealthUpdateUsageDescription" = "O openGym salva seus treinos no Apple Saúde se você ativar.";
+"NSMotionUsageDescription" = "O openGym conta suas repetições pelo movimento do pulso durante a série.";

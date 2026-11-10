@@ -2,3 +2,4 @@
 
 "NSHealthShareUsageDescription" = "openGym वर्कआउट के दौरान और हर सेट के साथ आपकी धड़कन दिखाता है।";
 "NSHealthUpdateUsageDescription" = "चालू करने पर openGym आपके वर्कआउट Apple Health में सहेजता है।";
+"NSMotionUsageDescription" = "openGym सेट के दौरान आपकी कलाई की हरकत से रेप्स गिनता है।";

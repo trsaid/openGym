@@ -2,3 +2,4 @@
 
 "NSHealthShareUsageDescription" = "openGym muestra tu pulso durante el entreno y junto a cada serie.";
 "NSHealthUpdateUsageDescription" = "openGym guarda tus entrenos en Apple Salud si lo activas.";
+"NSMotionUsageDescription" = "openGym cuenta tus repeticiones por el movimiento de tu muñeca durante la serie.";

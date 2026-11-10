@@ -7,9 +7,20 @@ import Foundation
  * every ticked set is a lesson (docs/dev/REP_COUNTING.md): the profiles are learned by playing
  * these back, and the ones in Tests/WatchCoreTests/Fixtures/traces are played back by CI.
  *
- * Nothing here leaves the watch by itself. The traces stay in the watch app's own folder, the
- * newest few per exercise, until they are exported on purpose (Settings → Apple Watch).
+ * The traces are kept in the watch app's own folder, the newest few per exercise, and a copy
+ * goes to the paired iPhone, into the app's folder there. That is as far as they go by
+ * themselves: out of the phone they only come when exported by hand (Settings → Apple Watch).
  */
+
+/// When the counter listens: with rep counting on, while a set with reps is up or coming up (the
+/// rest before it too: a set started early is counted from its first rep). Not for a hold, not
+/// for cardio, not once every set of the exercise is done.
+enum RepPlan {
+    static func listens(_ settings: WatchSettings, entry: Entry?, set: Int?) -> Bool {
+        guard settings.countsReps, let e = entry, set != nil else { return false }
+        return !e.isTimed && !e.isCardio
+    }
+}
 
 /// The counter as the workout uses it: it listens all the time a set with reps is up or coming
 /// up, keeps the last readings, and hands the set over when it is ticked.
@@ -54,9 +65,21 @@ struct RepTracker: Equatable {
             from = (samples.last?.t ?? 0) - Self.blindSec
         }
         let out = samples.filter { $0.t >= from }
+        reset()
+        return out
+    }
+
+    /// Another set is up without this one having been ticked: nothing kept, a fresh counter.
+    mutating func reset() {
         samples = []
         counter = RepCounter(settings: settings, rate: rate)
-        return out
+    }
+
+    /// When the last rep was, in seconds before the newest reading: where the rest after a set
+    /// that ended by itself starts from.
+    var sinceLastRep: Double? {
+        guard let last = counter.lastRepAt, let now = samples.last?.t else { return nil }
+        return max(0, now - last)
     }
 }
 
@@ -75,6 +98,8 @@ struct SetTrace: Codable, Equatable {
     var edited: Bool
     /// The set ended by itself (SetEnd), not by a tap.
     var auto: Bool?
+    /// Where it was ticked when not on the watch ("phone"): the lifter did not see the count.
+    var by: String?
     var w: Double?
     var unit: String?
     /// When it was ticked (ms since 1970).
@@ -90,6 +115,20 @@ struct SetTrace: Codable, Equatable {
 
     /// The file it is kept in: sorts by time, and says which exercise without opening it.
     var fileName: String { "\(Int(at))-\(TraceShelf.safe(exId)).json" }
+}
+
+/// Many traces in one file: what the phone's export writes (WatchBridgePlugin exportTraces).
+struct TraceBundle: Codable, Equatable {
+    var v: Int = 1
+    var traces: [SetTrace]
+
+    /// The traces of a file, whether it holds a bundle or one trace.
+    static func traces(in data: Data) -> [SetTrace] {
+        let d = JSONDecoder()
+        if let b = try? d.decode(TraceBundle.self, from: data) { return b.traces }
+        if let one = try? d.decode(SetTrace.self, from: data) { return [one] }
+        return []
+    }
 }
 
 /// The readings packed small: nine 16-bit numbers a reading, little-endian, about 55 kB a minute

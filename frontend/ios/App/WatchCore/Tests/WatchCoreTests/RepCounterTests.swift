@@ -153,6 +153,58 @@ final class RepCounterTests: XCTestCase {
         assertCount(RepSignals.count(first + gap + second), about: 10)
     }
 
+    func testOneLateMovementAfterTheSetCountsNothing() {
+        // Ten reps, then seven seconds later the bar goes back on the rack (or the wrist comes
+        // up to the eyes): far off the set's tempo, and nothing follows it.
+        let set = RepSignals.lift(10)
+        let gap = RepSignals.silence(7, from: set.last!.t + RepSignals.dt)
+        let rack = RepSignals.lift(1, lead: 0, tail: 3, from: gap.last!.t + RepSignals.dt)
+        XCTAssertEqual(RepSignals.count(set + gap + rack), 10)
+    }
+
+    func testARepAfterABreathCountsOnceTheNextOneFollows() {
+        let first = RepSignals.lift(6)
+        let gap = RepSignals.silence(7, from: first.last!.t + RepSignals.dt)
+        let second = RepSignals.lift(2, lead: 0, tail: 2, from: gap.last!.t + RepSignals.dt)
+        var c = RepCounter()
+        for s in first + gap { _ = c.feed(s) }
+        XCTAssertEqual(c.count, 6)
+        var steps: [Int] = []
+        for s in second { let n = c.feed(s); if n > 0 { steps.append(n) } }
+        XCTAssertEqual(steps, [2], "the rep after the breath waits for the one after it")
+        XCTAssertEqual(c.count, 8)
+    }
+
+    func testASlowerRhythmAfterAQuickOneIsTheSet() {
+        // A quick rhythm (the walk to the bench, dumbbells in hand), five seconds to lie down,
+        // then ten slow presses: the presses are the set, the walk is forgotten.
+        let walk = RepSignals.reps(6)
+        let gap = RepSignals.silence(5, from: walk.last!.t + RepSignals.dt)
+        let set = RepSignals.lift(10, up: 1.5, down: 2.0, lead: 0, tail: 2, from: gap.last!.t + RepSignals.dt)
+        var c = RepCounter()
+        for s in walk + gap { _ = c.feed(s) }
+        assertCount(c.count, about: 6, "the walk")
+        for s in set { _ = c.feed(s) }
+        XCTAssertEqual(c.count, 10)
+        XCTAssertGreaterThan(c.burstFrom ?? 0, gap.last!.t)
+    }
+
+    func testThePauseThatStartsANewCountGrowsWithTheTempo() {
+        let quick = RepCounter()
+        XCTAssertEqual(quick.stale(at: 1.2), 8)
+        XCTAssertEqual(quick.stale(at: 3), 12)
+        XCTAssertEqual(quick.stale(at: 8), 20)
+        XCTAssertEqual(quick.stale(at: nil), 8)
+        // Nine seconds in a set of slow reps is a breath; in a set of quick ones it is a new set.
+        func two(_ make: (Int, Double, Double) -> [MotionSample]) -> Int {
+            let a = make(6, 1.0, 0)
+            let gap = RepSignals.silence(9, from: a.last!.t + RepSignals.dt)
+            return RepSignals.count(a + gap + make(6, 0, gap.last!.t + RepSignals.dt))
+        }
+        XCTAssertEqual(two { RepSignals.lift($0, up: 1.2, down: 1.8, lead: $1, from: $2) }, 12)
+        XCTAssertEqual(two { RepSignals.lift($0, up: 0.6, down: 0.6, lead: $1, from: $2) }, 6)
+    }
+
     /* ---------- a set that ends by itself ---------- */
 
     func testTheSetIsOverAfterFourQuietSeconds() {

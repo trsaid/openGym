@@ -2,3 +2,4 @@
 
 "NSHealthShareUsageDescription" = "openGym 会在训练中和每组旁显示你的心率。";
 "NSHealthUpdateUsageDescription" = "打开后，openGym 会把训练保存到 Apple 健康。";
+"NSMotionUsageDescription" = "openGym 根据你做组时手腕的动作来计数。";

@@ -210,6 +210,14 @@ final class SettingsAndWeighInTests: XCTestCase {
         XCTAssertTrue(d.showClip && d.showHr && d.showLast && d.showNext && d.restRing)
         XCTAssertFalse(d.showElapsed || d.showKcal)
         XCTAssertNil(old.settings?.lang)
+        // Rep counting: on with its taps, the set ticked by hand, unless the phone says otherwise.
+        let quiet = old.settings ?? WatchSettings()
+        XCTAssertTrue(quiet.countsReps && quiet.tapsReps)
+        XCTAssertFalse(quiet.endsSets)
+        let own = try JSONDecoder().decode(Snapshot.self, from: Data(#"{"v":1,"settings":{"autoReps":false,"repHaptics":false,"autoEnd":true}}"#.utf8))
+        XCTAssertFalse(own.settings?.countsReps ?? true)
+        XCTAssertFalse(own.settings?.tapsReps ?? true)
+        XCTAssertTrue(own.settings?.endsSets ?? false)
     }
 }
 
