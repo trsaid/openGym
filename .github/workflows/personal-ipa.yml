@@ -1,0 +1,98 @@
+# An IPA to put on your own iPhone and Apple Watch without a Mac and without a paid developer
+# account. It is the device-archive job of ios.yml with one difference: the 180 px exercise media
+# from the repository stay inside, so the app is complete as it is (the App Store build gets its
+# larger animations on the release machine instead, docs/APP_STORES.md).
+#
+# The IPA is unsigned. Sign and install it with your own Apple ID from a PC (Sideloadly, AltStore):
+# a free Apple ID gives an app that runs for seven days before it has to be installed again.
+#
+# Runs when started by hand (Actions, "Personal IPA", "Run workflow"), on every push to main that
+# touches the app, and on the claude/* work branches, so a change can be tried on a real watch
+# before it is merged. The IPA is the `opengym-personal-ipa` artifact of the run.
+name: Personal IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, 'claude/**']
+    paths:
+      - 'frontend/**'
+      - 'catalogue/**'
+      - '.github/workflows/personal-ipa.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: personal-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ipa:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      # cap sync runs pod install, which clones some pods from GitHub: a dropped connection there
+      # is not a broken build, so it gets two more tries (as in ios.yml).
+      - name: Phone build (pod install retried)
+        run: for i in 1 2 3; do npm run build:mobile && break; [ "$i" = 3 ] && exit 1; echo "::warning::build:mobile failed, retry $i"; sleep 30; done
+        working-directory: frontend
+      # The targets CI adds to the project before every iOS build (ios.yml does the same).
+      - run: ruby ios/ci/add-asset-downloader.rb
+        working-directory: frontend
+      - run: ruby ios/ci/add-watch-app.rb
+        working-directory: frontend
+      - run: ruby ios/ci/add-widgets.rb
+        working-directory: frontend
+      # The watch's logic is tested here too: this is the build that goes onto a real watch.
+      - name: WatchCore tests
+        working-directory: frontend/ios/App/WatchCore
+        run: |
+          set -o pipefail
+          swift test 2>&1 | tail -60
+      - name: Archive, unsigned
+        working-directory: frontend/ios/App
+        run: |
+          set -o pipefail
+          mkdir -p build
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/App.xcarchive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" archive \
+            | tee build/archive.log | grep -E "error:|BUILD|ARCHIVE" || true
+          APP=build/App.xcarchive/Products/Applications/App.app
+          test -d "$APP" || { tail -80 build/archive.log; echo "::error::the archive has no App.app"; exit 1; }
+          # What a sideloaded app needs to be whole: the page, its media, and the watch app.
+          test -f "$APP/public/index.html" || { echo "::error::no phone build in the app"; exit 1; }
+          test -d "$APP/public/exercise-media" || { echo "::error::no exercise media in the app"; exit 1; }
+          test -d "$APP/Watch/OpenGymWatch.app" || { echo "::error::no Apple Watch app in the app"; exit 1; }
+          mkdir -p build/Payload && cp -R "$APP" build/Payload/
+          IPA="openGym-personal-${GITHUB_SHA::7}.ipa"
+          (cd build && zip -qry "$IPA" Payload)
+          ls -la "build/$IPA"
+          {
+            echo "### $IPA"
+            echo "$(du -h "build/$IPA" | cut -f1), commit $GITHUB_SHA, unsigned."
+            echo
+            echo "Bundles to sign:"
+            find build/Payload -name Info.plist -maxdepth 6 \( -path '*.app/Info.plist' -o -path '*.appex/Info.plist' \) \
+              | while read -r p; do echo "- $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$p") ($(dirname "${p#build/Payload/}"))"; done
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: opengym-personal-ipa
+          path: frontend/ios/App/build/openGym-personal-*.ipa
+          retention-days: 14
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        if: failure()
+        with:
+          name: personal-ipa-log
+          path: frontend/ios/App/build/archive.log
+          retention-days: 7
