@@ -510,10 +510,11 @@ final class SessionStore: NSObject, ObservableObject, WCSessionDelegate, UNUserN
         // The set the counter was listening for: its readings are kept with the phone's reps.
         if let key = countingFor, let w = workout, w.entries.indices.contains(t.entryIdx) {
             let e = w.entries[t.entryIdx]
-            let side = ["L", "R"].first { key == SessionCore.key(t.exId, t.setIdx, $0) }
+            let sides: [String] = ["L", "R"]
+            let side: String? = sides.first { key == SessionCore.key(t.exId, t.setIdx, $0) }
             if e.id == t.exId, e.sets.indices.contains(t.setIdx), side != nil || key == SessionCore.key(t.exId, t.setIdx) {
                 let row = e.sets[t.setIdx]
-                let one = side.flatMap { row.sides?[$0] }
+                let one: SideRow? = side.flatMap { row.sides?[$0] }
                 let cut = repSensor.cut()
                 counted = nil
                 if let r = one?.r ?? row.r {
