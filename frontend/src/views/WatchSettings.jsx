@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom'
 import { t } from '../lib/i18n.js'
 import { Section, Row, Switch, SelectRow } from '../components/ui.jsx'
 import { readWatchPrefs, writeWatchPrefs, readWatchStatus, onWatchPrefs } from '../lib/watch-settings.js'
-import { watchStatus } from '../lib/watch-sync.js'
+import { watchStatus, watchTraces, exportWatchTraces } from '../lib/watch-sync.js'
 import { loadHealth, onHealthChange } from '../lib/health-sync.js'
 import { fmtAgo } from '../lib/format.js'
 
@@ -39,6 +39,14 @@ export default function WatchSettingsPage() {
     const off = onHealthChange(h => setHealthOn(!!h?.on))
     return () => { gone = true; off() }
   }, [])
+  // The sets the watch recorded for its rep counter, as this phone has them (null: none to speak of).
+  const [traces, setTraces] = useState(null)
+  useEffect(() => {
+    let gone = false
+    watchTraces().then(r => { if (!gone) setTraces(r) }).catch(() => {})
+    return () => { gone = true }
+  }, [])
+  const exportTraces = () => exportWatchTraces().catch(() => { /* share sheet dismissed */ })
   const set = patch => setPrefs(writeWatchPrefs(patch))
 
   const linkLine = !link ? t('Checking…')
@@ -88,6 +96,24 @@ export default function WatchSettingsPage() {
           <Switch checked={prefs.restHaptics} onChange={v => set({ restHaptics: v })} aria-label={t('Tap the wrist when a rest is over')} />
         </Row>
       </Section>
+      {/* Reps counted from the wrist's motion (docs/dev/REP_COUNTING.md). */}
+      <Section title={t('Rep counting')} footer={t('The watch counts your reps from the way your wrist moves and puts them on the set. Have a look at the number before you tick the set.')}>
+        <Row icon="repeat" iconTint="var(--green)" title={t('Count reps on the watch')}>
+          <Switch checked={prefs.autoReps} onChange={v => set({ autoReps: v })} aria-label={t('Count reps on the watch')} />
+        </Row>
+        {prefs.autoReps && <Row icon="vibrate" iconTint="var(--indigo)" title={t('Tap the wrist at each rep')}>
+          <Switch checked={prefs.repHaptics} onChange={v => set({ repHaptics: v })} aria-label={t('Tap the wrist at each rep')} />
+        </Row>}
+      </Section>
+      {prefs.autoReps && <Section footer={t('A few seconds after your last rep the watch ticks the set and starts the rest. Cancel on the watch keeps the set open.')}>
+        <Row icon="checkCircle" iconTint="var(--orange)" title={t('End the set by itself')}>
+          <Switch checked={prefs.autoEnd} onChange={v => set({ autoEnd: v })} aria-label={t('End the set by itself')} />
+        </Row>
+      </Section>}
+      {prefs.autoReps && traces && <Section footer={t('The watch keeps the wrist motion of your last sets with the reps you logged, so the counting can learn from them. They stay on your watch and iPhone until you export them.')}>
+        <Row icon="chartLine" iconTint="var(--grey)" title={t('Recorded sets')} value={String(traces.count)} />
+        {traces.count > 0 && <Row icon="share" iconTint="var(--grey)" title={t('Export recorded sets')} accessory="chevron" onClick={exportTraces} />}
+      </Section>}
     </>}
   </>
 }

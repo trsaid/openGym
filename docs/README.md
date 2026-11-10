@@ -58,6 +58,7 @@ Design notes for specific features, kept next to the code they describe:
 | [Workout views](dev/LIST_VIEW.md) | The cards, list and compact layouts of the workout screen |
 | [Combine routines](dev/COMBINE_ROUTINES.md) | Spec for running more than one routine in a session |
 | [Fatigue and sets](dev/FATIGUE_SETS_MODEL.md) | How hard sets feed the fatigue map and its recovery time per muscle |
+| [Rep counting](dev/REP_COUNTING.md) | The Apple Watch counts a set's reps from the wrist's motion: the counter, the recorded sets, what is not known yet |
 
 ## Still stuck?
 

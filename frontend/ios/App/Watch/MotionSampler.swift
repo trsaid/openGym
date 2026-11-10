@@ -95,7 +95,7 @@ final class RepSensor {
     func cut() -> RepCut {
         token += 1
         let now = token
-        return work.sync {
+        return work.sync { () -> RepCut in
             let counted = tracker.shown, since = tracker.sinceLastRep
             live = now
             quietTold = false

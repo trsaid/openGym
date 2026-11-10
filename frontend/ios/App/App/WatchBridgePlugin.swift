@@ -32,6 +32,8 @@ import WatchConnectivity
  *   await WatchBridge.openOnWatch()       // { ok }: a workout started here opens the watch app
  *   await WatchBridge.dropClips()         // the workout is over: clips still on their way are cancelled
  *   WatchBridge.addListener('watchState', ...)   // activated, paired, installed changed: ask status again
+ *   await WatchBridge.traces()            // { count }: the sets the watch recorded for its rep counter
+ *   await WatchBridge.exportTraces()      // { uri, name, count }: all of them in one file, to share
  *
  * Animations: only the running workout's, only as files sent with transferFile (the watch keeps
  * them while that workout runs and deletes them after). Each is what this phone shows for that
@@ -39,6 +41,11 @@ import WatchConnectivity
  * package (`path` under public/: the store build's animated WebP, an MP4 loop in other builds).
  * Made into a small looping GIF here (ImageIO reads animated WebP; AVFoundation the MP4), because
  * the watch shows a frame sequence. Nothing is fetched from anywhere.
+ *
+ * Recorded sets: the watch's rep counter keeps the wrist's motion of each ticked set with the reps
+ * logged for it (WatchCore RepTrace.swift, docs/dev/REP_COUNTING.md) and sends a copy here with
+ * transferFile. They are kept in this app's own folder, the newest few hundred, and leave the
+ * phone only through the export in Settings → Apple Watch, as one file for the share sheet.
  */
 @objc(WatchBridgePlugin)
 public class WatchBridgePlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate {
@@ -52,6 +59,8 @@ public class WatchBridgePlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate {
         CAPPluginMethod(name: "sendClips", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openOnWatch", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "dropClips", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "traces", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "exportTraces", returnType: CAPPluginReturnPromise),
     ]
 
     private let queue = DispatchQueue(label: "ch.opengym.watch-events")
@@ -275,6 +284,65 @@ public class WatchBridgePlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate {
         let d = UserDefaults.standard
         if let wid = active?["id"] as? String { d.set(wid, forKey: idleWidKey) } else { d.removeObject(forKey: idleWidKey) }
         if let at = active?["activeAt"] as? NSNumber { d.set(at.doubleValue, forKey: idleActiveAtKey) } else { d.removeObject(forKey: idleActiveAtKey) }
+    }
+
+    /* ---------- the sets the watch recorded for its rep counter ---------- */
+
+    static let tracesKept = 400
+    static var traceDir: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("rep-traces")
+    }
+
+    /// The trace files here, oldest first: their names start with when the set was ticked.
+    static func traceFiles() -> [URL] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: traceDir.path)) ?? []
+        return names.filter { $0.hasSuffix(".json") }.sorted().map { traceDir.appendingPathComponent($0) }
+    }
+
+    /// A recorded set from the watch. The file is gone once this returns: moved now.
+    public func session(_ session: WCSession, didReceive file: WCSessionFile) {
+        guard let sent = file.metadata?["trace"] as? String else { return }
+        let name = (sent as NSString).lastPathComponent
+        guard name.hasSuffix(".json"), !name.hasPrefix(".") else { return }
+        let dir = WatchBridgePlugin.traceDir
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dest = dir.appendingPathComponent(name)
+        try? FileManager.default.removeItem(at: dest)
+        try? FileManager.default.moveItem(at: file.fileURL, to: dest)
+        for old in WatchBridgePlugin.traceFiles().dropLast(WatchBridgePlugin.tracesKept) { try? FileManager.default.removeItem(at: old) }
+    }
+
+    @objc func traces(_ call: CAPPluginCall) {
+        call.resolve(["count": WatchBridgePlugin.traceFiles().count])
+    }
+
+    /// All of them in one file in the cache, `{"v":1,"traces":[…]}` (WatchCore TraceBundle), put
+    /// together from the files as they are: each one is a JSON object already.
+    @objc func exportTraces(_ call: CAPPluginCall) {
+        queue.async {
+            let files = WatchBridgePlugin.traceFiles()
+            var out = Data("{\"v\":1,\"traces\":[".utf8)
+            var count = 0
+            for f in files {
+                guard let data = try? Data(contentsOf: f), data.first == UInt8(ascii: "{"), data.last == UInt8(ascii: "}") else { continue }
+                if count > 0 { out.append(UInt8(ascii: ",")) }
+                out.append(data)
+                count += 1
+            }
+            out.append(Data("]}".utf8))
+            guard count > 0 else { call.resolve(["count": 0]); return }
+            let stamp = DateFormatter()
+            stamp.locale = Locale(identifier: "en_US_POSIX")
+            stamp.dateFormat = "yyyyMMdd-HHmm"
+            let name = "opengym-recorded-sets-\(stamp.string(from: Date())).json"
+            let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent(name)
+            do {
+                try out.write(to: url, options: .atomic)
+                call.resolve(["uri": url.absoluteString, "name": name, "count": count])
+            } catch {
+                call.reject("could not write the export")
+            }
+        }
     }
 
     /// Before it ends a workout as forgotten, the watch asks whether it goes on here (its copy may
