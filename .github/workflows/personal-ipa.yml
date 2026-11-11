@@ -9,10 +9,20 @@
 # Runs when started by hand (Actions, "Personal IPA", "Run workflow"), on every push to main that
 # touches the app, and on the claude/* work branches, so a change can be tried on a real watch
 # before it is merged. The IPA is the `opengym-personal-ipa` artifact of the run.
+#
+# The watch's complications are left out unless the run is started by hand with "watch_widgets":
+# they are an extension inside the watch app, and the tools that sign with a free Apple ID rename
+# the watch app without renaming what is inside it, so the phone refuses the whole install
+# (AppexBundleIDNotPrefixed). The watch app itself needs nothing from them.
 name: Personal IPA
 
 on:
   workflow_dispatch:
+    inputs:
+      watch_widgets:
+        description: Keep the watch's complications (the tools that sign with a free Apple ID cannot install them)
+        type: boolean
+        default: false
   push:
     branches: [main, 'claude/**']
     paths:
@@ -60,6 +70,8 @@ jobs:
           swift test 2>&1 | tail -60
       - name: Archive, unsigned
         working-directory: frontend/ios/App
+        env:
+          WATCH_WIDGETS: ${{ inputs.watch_widgets }}
         run: |
           set -o pipefail
           mkdir -p build
@@ -73,6 +85,8 @@ jobs:
           test -f "$APP/public/index.html" || { echo "::error::no phone build in the app"; exit 1; }
           test -d "$APP/public/exercise-media" || { echo "::error::no exercise media in the app"; exit 1; }
           test -d "$APP/Watch/OpenGymWatch.app" || { echo "::error::no Apple Watch app in the app"; exit 1; }
+          # See the top of this file: the watch app goes out without its complications.
+          if [ "$WATCH_WIDGETS" != "true" ]; then rm -rf "$APP/Watch/OpenGymWatch.app/PlugIns"; fi
           mkdir -p build/Payload && cp -R "$APP" build/Payload/
           IPA="openGym-personal-${GITHUB_SHA::7}.ipa"
           (cd build && zip -qry "$IPA" Payload)
