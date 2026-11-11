@@ -10,6 +10,7 @@ Pick the part that matches what you're doing. If you just have a question, try t
 | [FAQ](FAQ.md) | You have a quick question: iPhone, cost, where your data goes, AI, the exercise media |
 | [Modules](MODULES.md) | You want a leaner app (just training, or training and body), or wonder what switching a module off hides and keeps |
 | [Phone app](MOBILE.md) | You want the iPhone app, the Apple Watch or the Android APK, or to connect the app to your own server |
+| [Apple Watch with a free Apple ID](WATCH_SIDELOAD.md) | You sideload the iPhone app with a free Apple ID and want the watch app on the watch too |
 | [Wear OS watch](WEAR_OS.md) | You want openGym on a Galaxy Watch, Pixel Watch or another Wear OS watch, or you work on the watch app |
 | [Garmin watch](GARMIN.md) | You want openGym on a Forerunner, fēnix, Venu, Instinct or another Garmin, or you build and publish the Connect IQ app |
 | [Zepp OS watch](ZEPP_OS.md) | You want openGym on an Amazfit (Zepp OS) watch, or you work on that watch app or the watch relay |

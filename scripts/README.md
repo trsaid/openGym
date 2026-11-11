@@ -38,6 +38,7 @@ run on the maintainer's machine against the private media archive.
 | `android/build-release.sh` | Builds and signs the APK and the Google Play bundle |
 | `android/build-wear.sh` | Builds and signs the Wear OS watch app (AAB for Google Play, APK for sideloading) |
 | `android/make-asset-packs.mjs` | Adds the Play asset packs to the Android project for one build, and removes them again |
+| `ios/watch-sideload.py` | Installs the watch app of an IPA signed with a free Apple ID straight onto the watch (docs/WATCH_SIDELOAD.md) |
 | `ios/finish-ipa.sh` | Puts the app's animations into the unsigned IPA from CI and signs it for the App Store |
 | `media/make-pack-manifests.mjs` | Plans the Apple-hosted animation packs from file names alone |
 | `media/build-media.py` | Turns the Gym visual pack into the files openGym ships (ffmpeg only) |
