@@ -11,7 +11,7 @@ describe('the choices', () => {
     expect(readWatchPrefs()).toEqual({ ...WATCH_DEFAULTS })
     const seen = vi.fn()
     onWatchPrefs(seen)
-    expect(writeWatchPrefs({ autoShow: false, crown: 'weight', junk: 1, health: true })).toEqual({ enabled: true, autoShow: false, restHaptics: true, crown: 'weight', show: { ...SHOW_DEFAULTS } })
+    expect(writeWatchPrefs({ autoShow: false, crown: 'weight', junk: 1, health: true })).toEqual({ enabled: true, autoShow: false, restHaptics: true, crown: 'weight', show: { ...SHOW_DEFAULTS }, autoReps: true, repHaptics: true, autoEnd: false })
     expect(readWatchPrefs().crown).toBe('weight')
     expect(seen).toHaveBeenCalled()
     localStorage.setItem('gym_watch_v1', '{broken')
@@ -20,12 +20,25 @@ describe('the choices', () => {
 
   it('go to the watch as its settings, and live outside the profile', () => {
     writeWatchPrefs({ restHaptics: false })
-    expect(settingsForWatch()).toEqual({ health: false, restHaptics: false, crown: 'reps', show: { ...SHOW_DEFAULTS } })
+    expect(settingsForWatch()).toEqual({ health: false, restHaptics: false, crown: 'reps', show: { ...SHOW_DEFAULTS }, autoReps: true, repHaptics: true, autoEnd: false })
     // Apple Health on the watch is the phone's Apple Health switch, whatever an older build stored.
     localStorage.setItem('gym_watch_v1', JSON.stringify({ health: true }))
     expect(settingsForWatch().health).toBe(false)
     expect(settingsForWatch(readWatchPrefs(), true).health).toBe(true)
     expect(localStorage.getItem('gym_state_v1')).toBeNull()
+  })
+})
+
+describe('rep counting', () => {
+  it('is on with its taps, and a set is ticked by hand, until the phone says otherwise', () => {
+    expect(readWatchPrefs()).toMatchObject({ autoReps: true, repHaptics: true, autoEnd: false })
+    writeWatchPrefs({ autoEnd: true, repHaptics: false })
+    expect(settingsForWatch()).toMatchObject({ autoReps: true, repHaptics: false, autoEnd: true })
+    writeWatchPrefs({ autoReps: false })
+    expect(settingsForWatch().autoReps).toBe(false)
+    // Only a real yes ends sets by themselves.
+    localStorage.setItem('gym_watch_v1', JSON.stringify({ autoEnd: 'yes', autoReps: 0 }))
+    expect(readWatchPrefs()).toMatchObject({ autoReps: true, autoEnd: false })
   })
 })
 

@@ -2,3 +2,4 @@
 
 "NSHealthShareUsageDescription" = "openGym pokazuje tętno podczas treningu i przy każdej serii.";
 "NSHealthUpdateUsageDescription" = "openGym zapisuje treningi w Apple Zdrowie, jeśli to włączysz.";
+"NSMotionUsageDescription" = "openGym liczy powtórzenia na podstawie ruchu nadgarstka podczas serii.";

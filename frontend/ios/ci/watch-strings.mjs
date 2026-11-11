@@ -221,6 +221,18 @@ const PLIST = {
     th: 'openGym บันทึกการฝึกลงใน Apple Health เมื่อคุณเปิดใช้', ko: '켜면 openGym이 운동을 Apple 건강에 저장해요.',
     'zh-Hans': '打开后，openGym 会把训练保存到 Apple 健康。', 'zh-Hant': '開啟後，openGym 會把訓練儲存到 Apple 健康。',
   },
+  // The motion sensors, for the rep counter (Watch/MotionSampler.swift).
+  NSMotionUsageDescription: {
+    de: 'openGym zählt deine Wiederholungen daran, wie sich dein Handgelenk im Satz bewegt.', fr: 'openGym compte tes répétitions d’après les mouvements de ton poignet pendant la série.',
+    es: 'openGym cuenta tus repeticiones por el movimiento de tu muñeca durante la serie.', it: 'openGym conta le ripetizioni dal movimento del polso durante la serie.',
+    'pt-PT': 'O openGym conta as tuas repetições pelo movimento do pulso durante a série.', 'pt-BR': 'O openGym conta suas repetições pelo movimento do pulso durante a série.',
+    pl: 'openGym liczy powtórzenia na podstawie ruchu nadgarstka podczas serii.', hu: 'Az openGym a csuklód mozgásából számolja az ismétléseket a sorozat közben.',
+    tr: 'openGym tekrarlarını set sırasında bileğinin hareketinden sayar.', ru: 'openGym считает повторения по движению запястья во время подхода.',
+    uk: 'openGym рахує повторення за рухом зап’ястя під час підходу.', ar: 'يعدّ openGym تكراراتك من حركة معصمك أثناء المجموعة.',
+    hi: 'openGym सेट के दौरान आपकी कलाई की हरकत से रेप्स गिनता है।', bn: 'openGym সেটের সময় আপনার কবজির নড়াচড়া থেকে রেপ গোনে।',
+    th: 'openGym นับจำนวนครั้งจากการเคลื่อนไหวของข้อมือระหว่างเซ็ต', ko: 'openGym이 세트 중 손목 움직임으로 반복 횟수를 세요.',
+    'zh-Hans': 'openGym 根据你做组时手腕的动作来计数。', 'zh-Hant': 'openGym 根據你做組時手腕的動作來計數。',
+  },
 }
 
 const esc = s => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')

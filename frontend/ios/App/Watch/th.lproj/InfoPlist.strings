@@ -2,3 +2,4 @@
 
 "NSHealthShareUsageDescription" = "openGym แสดงอัตราการเต้นของหัวใจระหว่างฝึกและข้างแต่ละเซ็ต";
 "NSHealthUpdateUsageDescription" = "openGym บันทึกการฝึกลงใน Apple Health เมื่อคุณเปิดใช้";
+"NSMotionUsageDescription" = "openGym นับจำนวนครั้งจากการเคลื่อนไหวของข้อมือระหว่างเซ็ต";

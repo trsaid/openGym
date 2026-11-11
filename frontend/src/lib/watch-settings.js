@@ -11,6 +11,10 @@
 //   show         what a workout screen shows: clip (the animation), hr, last (last time's sets),
 //                elapsed (time so far), kcal, next (the next exercise during a rest), and rest:
 //                'ring' or 'plain' (the countdown alone)
+//   autoReps     the watch counts a set's reps from the wrist's motion and puts them on the set
+//                (docs/dev/REP_COUNTING.md)
+//   repHaptics   the wrist taps at each rep it counts
+//   autoEnd      a set is ticked by itself a few seconds after its last rep (off: with Done)
 // Apple Health on the watch is not a choice of its own: it follows the phone's Apple Health switch
 // (Settings → Data, lib/health-sync.js), which the watch gets as `settings.health`. An older build's
 // `health` field in the stored prefs is left alone and not read.
@@ -20,7 +24,7 @@ export const WATCH_STATUS_KEY = 'gym_watch_status_v1'
 // `garmin`, docs/GARMIN.md). Settings → Modules asks before Watch goes off while one is there.
 export const GARMIN_LINK_KEY = 'gym_garmin_link_v1'
 export const SHOW_DEFAULTS = Object.freeze({ clip: true, hr: true, last: true, elapsed: false, kcal: false, next: true, rest: 'ring' })
-export const WATCH_DEFAULTS = Object.freeze({ enabled: true, autoShow: true, restHaptics: true, crown: 'reps', show: SHOW_DEFAULTS })
+export const WATCH_DEFAULTS = Object.freeze({ enabled: true, autoShow: true, restHaptics: true, crown: 'reps', show: SHOW_DEFAULTS, autoReps: true, repHaptics: true, autoEnd: false })
 
 const showOf = v => {
   const o = v && typeof v === 'object' ? v : {}
@@ -44,6 +48,9 @@ export function readWatchPrefs(storage = globalThis.localStorage) {
     restHaptics: v.restHaptics !== false,
     crown: v.crown === 'weight' ? 'weight' : 'reps',
     show: showOf(v.show),
+    autoReps: v.autoReps !== false,
+    repHaptics: v.repHaptics !== false,
+    autoEnd: v.autoEnd === true,
   }
 }
 
@@ -84,4 +91,7 @@ export function writeWatchStatus(ev, storage = globalThis.localStorage) {
 }
 
 /** The choices as the watch reads them (WatchCore Model.swift WatchSettings); `health` is the phone's Apple Health switch. */
-export const settingsForWatch = (p = readWatchPrefs(), health = false) => ({ health: !!health, restHaptics: p.restHaptics, crown: p.crown, show: { ...p.show } })
+export const settingsForWatch = (p = readWatchPrefs(), health = false) => ({
+  health: !!health, restHaptics: p.restHaptics, crown: p.crown, show: { ...p.show },
+  autoReps: p.autoReps, repHaptics: p.repHaptics, autoEnd: p.autoEnd,
+})

@@ -847,6 +847,33 @@ export function patchSetIn (s, { wid, exId, entryIdx, setIdx, side = null }, fie
   return true
 }
 
+/**
+ * The sets the Apple Watch recorded for its rep counter (docs/dev/REP_COUNTING.md), as this phone
+ * keeps them: how many there are. null where there is no such thing (no watch link, Wear OS).
+ */
+export async function watchTraces () {
+  const p = await watchPlugin()
+  if (!p || typeof p.WatchBridge.traces !== 'function') return null
+  try {
+    const r = await p.WatchBridge.traces()
+    return r && typeof r.count === 'number' ? { count: r.count } : null
+  } catch { return null }
+}
+
+/**
+ * Their export: the phone writes them into one file and the share sheet takes it (Files, AirDrop,
+ * mail). Resolves with how many sets went into it, 0 when there were none.
+ */
+export async function exportWatchTraces () {
+  const p = await watchPlugin()
+  if (!p) return 0
+  const r = await p.WatchBridge.exportTraces()
+  if (!r || !r.uri || !r.count) return 0
+  const { Share } = await import('@capacitor/share')
+  await Share.share({ title: r.name, url: r.uri })
+  return r.count
+}
+
 /** Whether a watch is paired and has the app, for Settings → Apple Watch. */
 export async function watchStatus () {
   const p = await watchPlugin()

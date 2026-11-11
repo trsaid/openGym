@@ -2,3 +2,4 @@
 
 "NSHealthShareUsageDescription" = "Az openGym edzés közben és minden sorozat mellett mutatja a pulzusodat.";
 "NSHealthUpdateUsageDescription" = "Az openGym az Apple Egészség appba menti az edzéseidet, ha bekapcsolod.";
+"NSMotionUsageDescription" = "Az openGym a csuklód mozgásából számolja az ismétléseket a sorozat közben.";

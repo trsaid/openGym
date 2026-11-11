@@ -2,3 +2,4 @@
 
 "NSHealthShareUsageDescription" = "openGym показує пульс під час тренування і біля кожного підходу.";
 "NSHealthUpdateUsageDescription" = "openGym зберігає тренування в Apple Здоров’я, якщо ти це ввімкнеш.";
+"NSMotionUsageDescription" = "openGym рахує повторення за рухом зап’ястя під час підходу.";

@@ -2,3 +2,4 @@
 
 "NSHealthShareUsageDescription" = "openGym mostra il tuo battito durante l’allenamento e accanto a ogni serie.";
 "NSHealthUpdateUsageDescription" = "openGym salva i tuoi allenamenti in Apple Salute se lo attivi.";
+"NSMotionUsageDescription" = "openGym conta le ripetizioni dal movimento del polso durante la serie.";

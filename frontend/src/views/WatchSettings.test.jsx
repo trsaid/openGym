@@ -6,9 +6,13 @@ import { createRoot } from 'react-dom/client'
 import { act } from 'react'
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom'
 
-const mocks = vi.hoisted(() => ({ health: { on: false }, link: { paired: true, installed: true } }))
+const mocks = vi.hoisted(() => ({ health: { on: false }, link: { paired: true, installed: true }, traces: null, exported: 0 }))
 vi.mock('../lib/health-sync.js', () => ({ loadHealth: async () => mocks.health, onHealthChange: () => () => {} }))
-vi.mock('../lib/watch-sync.js', () => ({ watchStatus: async () => mocks.link }))
+vi.mock('../lib/watch-sync.js', () => ({
+  watchStatus: async () => mocks.link,
+  watchTraces: async () => mocks.traces,
+  exportWatchTraces: async () => { mocks.exported++; return mocks.traces?.count || 0 },
+}))
 
 import WatchSettingsPage from './WatchSettings.jsx'
 import { readWatchPrefs, writeWatchStatus } from '../lib/watch-settings.js'
@@ -30,7 +34,7 @@ async function mount() {
 }
 const row = (el, title) => [...el.querySelectorAll('.lrow')].find(r => r.querySelector('.lrow-t')?.textContent === title)
 
-beforeEach(() => { localStorage.clear(); mocks.health = { on: false }; where = null })
+beforeEach(() => { localStorage.clear(); mocks.health = { on: false }; mocks.traces = null; mocks.exported = 0; where = null })
 
 describe('Settings → Apple Watch', () => {
   it('shows Apple Health as the phone has it, and leads to its switch', async () => {
@@ -68,6 +72,35 @@ describe('Settings → Apple Watch', () => {
     expect(sw.getAttribute('aria-checked')).toBe('true')
     await act(async () => { sw.click() })
     expect(readWatchPrefs().autoShow).toBe(false)
+  })
+
+  it('counts reps on the watch with a tap at each, and leaves ending the set to Done, to begin with', async () => {
+    const el = await mount()
+    const sw = title => row(el, title)?.querySelector('[role="switch"]')
+    expect(sw('Count reps on the watch').getAttribute('aria-checked')).toBe('true')
+    expect(sw('Tap the wrist at each rep').getAttribute('aria-checked')).toBe('true')
+    expect(sw('End the set by itself').getAttribute('aria-checked')).toBe('false')
+    await act(async () => { sw('End the set by itself').click() })
+    expect(readWatchPrefs().autoEnd).toBe(true)
+    // Off: nothing left to choose about it.
+    await act(async () => { sw('Count reps on the watch').click() })
+    expect(readWatchPrefs().autoReps).toBe(false)
+    expect(row(el, 'Tap the wrist at each rep')).toBeUndefined()
+    expect(row(el, 'End the set by itself')).toBeUndefined()
+  })
+
+  it('shows the recorded sets this phone has and exports them, when there are some', async () => {
+    let el = await mount()
+    expect(row(el, 'Recorded sets')).toBeUndefined()
+    mocks.traces = { count: 0 }
+    el = await mount()
+    expect(row(el, 'Recorded sets').querySelector('.lrow-v').textContent).toBe('0')
+    expect(row(el, 'Export recorded sets')).toBeUndefined()
+    mocks.traces = { count: 12 }
+    el = await mount()
+    expect(row(el, 'Recorded sets').querySelector('.lrow-v').textContent).toBe('12')
+    await act(async () => { row(el, 'Export recorded sets').click() })
+    expect(mocks.exported).toBe(1)
   })
 
   it('lets you pick what the watch shows, one switch at a time, clean to begin with', async () => {

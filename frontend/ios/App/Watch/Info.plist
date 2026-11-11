@@ -24,9 +24,12 @@
 	<string>openGym shows your heart rate during a workout and next to each set.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>openGym saves your workouts to Apple Health when you switch it on.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>openGym counts your reps from the way your wrist moves during a set.</string>
 	<key>WKBackgroundModes</key>
 	<array>
 		<string>workout-processing</string>
+		<string>physical-therapy</string>
 	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
