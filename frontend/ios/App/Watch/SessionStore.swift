@@ -111,6 +111,7 @@ final class SessionStore: NSObject, ObservableObject, WCSessionDelegate, UNUserN
 
     /// The motion sensor and the counter behind it; it listens only while `syncCounting` says so.
     let repSensor = RepSensor()
+    let repRuntime = RepRuntime()
     /// The reps on the tile are the counter's own (the tile is in the accent colour then).
     @Published private(set) var repsCounted = false
     /// A set about to be ticked by itself (the phone's "End the set by itself"): when its 3-2-1 began.
@@ -187,6 +188,11 @@ final class SessionStore: NSObject, ObservableObject, WCSessionDelegate, UNUserN
         health.onStatus = { [weak self] in self?.sendStatus() }
         repSensor.onCount = { [weak self] n, token in self?.repCounted(n, token: token) }
         repSensor.onQuiet = { [weak self] token in self?.setLooksOver(token: token) }
+        repRuntime.onLog = { [weak self] line in self?.log(line) }
+        // The runtime session that keeps the counter going can only start with the app in front.
+        NotificationCenter.default.addObserver(forName: WKApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.repRuntime.begin()
+        }
         let center = UNUserNotificationCenter.current()
         center.delegate = self
         if !isDemo { center.requestAuthorization(options: [.alert, .sound]) { _, _ in } }
@@ -568,6 +574,8 @@ final class SessionStore: NSObject, ObservableObject, WCSessionDelegate, UNUserN
             if key != nil { repSensor.reset() }
         }
         if listen { repSensor.start(endsSets: state.settings.endsSets) } else { repSensor.stop() }
+        // Apple Health's session keeps the app running when it is there; otherwise a runtime session.
+        repRuntime.want(listen && !health.running)
         if listen, !repsEdited, let n = counted {
             reps = Double(n)
             repsCounted = true

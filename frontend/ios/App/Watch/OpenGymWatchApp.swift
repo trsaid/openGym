@@ -1291,7 +1291,7 @@ struct DebugView: View {
                 Text(verbatim: "started here: \(store.state.startedHere ?? "-")").font(.caption2)
                 Text(verbatim: "clips: \(store.clips.count)").font(.caption2)
                 Text(verbatim: "health: \(store.health.enabled ? "on" : "off"), \(store.health.running ? "running" : "idle")").font(.caption2)
-                Text(verbatim: "reps: \(store.repSensor.listening ? "listening" : "off"), sets \(TraceStore.summary)").font(.caption2)
+                Text(verbatim: "reps: \(store.repSensor.listening ? "listening" : "off")\(store.repRuntime.running ? " (runtime)" : ""), sets \(TraceStore.summary)").font(.caption2)
                 Divider()
                 ForEach(Array(store.clipLog.reversed().enumerated()), id: \.offset) { pair in
                     Text(verbatim: pair.element).font(.system(size: 10)).foregroundStyle(.secondary)

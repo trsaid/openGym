@@ -29,6 +29,7 @@
 	<key>WKBackgroundModes</key>
 	<array>
 		<string>workout-processing</string>
+		<string>physical-therapy</string>
 	</array>
 	<key>CFBundleURLTypes</key>
 	<array>

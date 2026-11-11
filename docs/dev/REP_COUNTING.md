@@ -38,7 +38,7 @@ changed: a counted set is ticked with the same `setDone` event as a set typed by
 |---|---|
 | `WatchCore/Sources/WatchCore/RepCounter.swift` | The counter itself (`RepCounter`, `RepSettings`), the filters, and `SetEnd` (when a set looks over). Pure, no sensors. |
 | `WatchCore/Sources/WatchCore/RepTrace.swift` | `RepTracker` (the counter plus the last readings), `RepPlan` (when to listen), `SetTrace` and `TraceCodec` (a recorded set), `TraceShelf` (which ones are kept), `TraceBundle` and `TraceReplay` (reading them back). |
-| `Watch/MotionSampler.swift` | `RepSensor`: CoreMotion's device motion at 50 Hz, fed to a `RepTracker` on its own queue. `TraceStore`: the trace files on the watch and their copy to the phone. |
+| `Watch/MotionSampler.swift` | `RepSensor`: CoreMotion's device motion at 50 Hz, fed to a `RepTracker` on its own queue. `RepRuntime`: keeps the app running without Apple Health. `TraceStore`: the trace files on the watch and their copy to the phone. |
 | `Watch/SessionStore.swift` | The section "reps counted from the wrist": the session tells the counter which set is up, takes its count onto the tile, ticks a set that ended by itself, and keeps the trace at the tick. |
 | `Watch/OpenGymWatchApp.swift` | The tile's colour, `SetEndView` (the 3-2-1). |
 | `App/WatchBridgePlugin.swift` | The phone's end: receives the trace files, counts them, writes the export. |
@@ -154,8 +154,11 @@ reason.
   8 s between them, runs into the set's count.
 - **A sudden change of tempo in a set.** Four or more reps at over twice the tempo of the ones
   before them start a new count.
-- **Without Apple Health.** The workout session is what keeps the app running with the wrist
-  down. With Apple Health off the counter only hears the wrist while the app is in front.
+- **Without Apple Health.** Apple Health's workout session is what keeps the app running with the
+  wrist down. When it is off, or refused (an app signed with a free Apple ID gets no HealthKit), a
+  physical therapy extended runtime session does it instead (`RepRuntime`): an hour at most, and it
+  can only start while the app is in front, so a workout started on the phone with the watch asleep
+  is counted from the first time the app is looked at. Not yet tried on a watch.
 - **Battery.** Device motion at 50 Hz runs for most of a workout. Not measured.
 
 ## What comes next

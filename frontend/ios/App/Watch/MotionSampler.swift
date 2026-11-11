@@ -119,6 +119,62 @@ final class RepSensor {
 }
 
 /*
+ * Keeps the app running with the wrist down while reps are counted and Apple Health's workout
+ * session is not there to do it: Apple Health off, or refused (an app signed with a free Apple ID
+ * gets no HealthKit, docs/WATCH_SIDELOAD.md). Without either, watchOS stops the app as soon as the
+ * screen goes dark and the counter hears nothing. It is a physical therapy extended runtime session
+ * (WKBackgroundModes in Info.plist): an hour at most, and it can only start while the app is in
+ * front, so it is tried again each time the app comes back to the front.
+ */
+final class RepRuntime: NSObject, WKExtendedRuntimeSessionDelegate {
+    /// Main queue: what happened to the session, for the debug log.
+    var onLog: ((String) -> Void)?
+
+    private var session: WKExtendedRuntimeSession?
+    private var wanted = false
+
+    var running: Bool { session?.state == .running }
+
+    /// Main queue. On: started now if the app is in front, else the next time it is.
+    func want(_ on: Bool) {
+        wanted = on
+        if on {
+            begin()
+        } else if let s = session {
+            session = nil
+            if s.state == .running || s.state == .scheduled { s.invalidate() }
+        }
+    }
+
+    /// Main queue: the app came to the front.
+    func begin() {
+        guard wanted, WKApplication.shared().applicationState == .active else { return }
+        if let s = session, s.state == .running || s.state == .scheduled { return }
+        let s = WKExtendedRuntimeSession()
+        s.delegate = self
+        session = s
+        s.start()
+    }
+
+    func extendedRuntimeSessionDidStart(_ extendedRuntimeSession: WKExtendedRuntimeSession) {
+        DispatchQueue.main.async { self.onLog?("runtime session started") }
+    }
+
+    func extendedRuntimeSessionWillExpire(_ extendedRuntimeSession: WKExtendedRuntimeSession) {
+        DispatchQueue.main.async { self.onLog?("runtime session about to expire") }
+    }
+
+    func extendedRuntimeSession(_ extendedRuntimeSession: WKExtendedRuntimeSession,
+                                didInvalidateWith reason: WKExtendedRuntimeSessionInvalidationReason,
+                                error: Error?) {
+        DispatchQueue.main.async {
+            if self.session === extendedRuntimeSession { self.session = nil }
+            self.onLog?("runtime session ended (\(reason.rawValue))\(error.map { ": \($0.localizedDescription)" } ?? "")")
+        }
+    }
+}
+
+/*
  * The recorded sets (SetTrace) on the watch: one small JSON file each in the app's own folder,
  * the newest few per exercise (TraceShelf), and a copy of each sent to the paired iPhone, which
  * keeps them for the export in Settings → Apple Watch (WatchBridgePlugin). The watch keeps its
